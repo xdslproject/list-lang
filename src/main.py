@@ -230,7 +230,6 @@ def _parse_opt_expr_p0(
         else_block = Block()
         else_builder = Builder(InsertPoint.at_start(else_block))
         else_block_expr = parse_block(ctx, else_builder)
-        print(else_block_expr)
         if else_block_expr.value.value is None:
             raise ParseError(else_block_expr.value.loc.pos, "expected block expression")
         else_builder.insert_op(scf.YieldOp(else_block_expr.value.value.value))
