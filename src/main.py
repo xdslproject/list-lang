@@ -1,13 +1,13 @@
 from dataclasses import dataclass
 import re
 
-from xdsl.dialects import arith, builtin
+from xdsl.dialects import arith, builtin, scf
 from xdsl.builder import Builder
 from xdsl.utils.scoped_dict import ScopedDict
-from xdsl.ir import SSAValue
+from xdsl.ir import Attribute, Block, SSAValue
 
 
-RESERVED_KEYWORDS = ["let", "if", "else"]
+RESERVED_KEYWORDS = ["let", "if", "else", "true", "false"]
 
 IDENT = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*")
 INTEGER = re.compile(r"[0-9]+")
@@ -21,9 +21,14 @@ class Punctuation:
     name: str
 
 
-LET = Punctuation(re.compile(r"let"), "let")
+LET = Punctuation(re.compile(r"let"), "'let'")
 EQUAL = Punctuation(re.compile(r"="), "equal")
 SEMICOLON = Punctuation(re.compile(r";"), "semicolon")
+
+IF = Punctuation(re.compile(r"if"), "'if'")
+ELSE = Punctuation(re.compile(r"else"), "'else'")
+TRUE = Punctuation(re.compile(r"true"), "'true'")
+FALSE = Punctuation(re.compile(r"false"), "'false'")
 
 STAR = Punctuation(re.compile(r"\*"), "star")
 PLUS = Punctuation(re.compile(r"\+"), "plus")
@@ -42,6 +47,7 @@ RCURL = Punctuation(re.compile(r"\}"), "right curly bracket")
 
 
 XDSL_INT = builtin.IntegerType(32)
+XDSL_BOOL = builtin.IntegerType(1)
 
 
 @dataclass
@@ -54,14 +60,31 @@ class Located[T]:
     loc: Location
     value: T
 
+    def __bool__(self) -> bool:
+        return bool(self.value)
+
 
 class ListLangType:
     def __str__(self) -> str: ...
+    def xdsl(self) -> Attribute: ...
 
 
+@dataclass
 class ListLangInt(ListLangType):
     def __str__(self) -> str:
         return "int"
+
+    def xdsl(self) -> Attribute:
+        return XDSL_INT
+
+
+@dataclass
+class ListLangBool(ListLangType):
+    def __str__(self) -> str:
+        return "bool"
+
+    def xdsl(self) -> Attribute:
+        return XDSL_BOOL
 
 
 @dataclass
@@ -138,8 +161,7 @@ def parse_opt_punct(ctx: ParsingContext, punct: Punctuation) -> Located[bool]:
 
 
 def parse_punct(ctx: ParsingContext, punct: Punctuation) -> Location:
-    located = parse_opt_punct(ctx, punct)
-    if not located.value:
+    if not (located := parse_opt_punct(ctx, punct)):
         raise ParseError.from_ctx(ctx, f"expected {punct.name}")
     return located.loc
 
@@ -180,11 +202,62 @@ def _parse_opt_expr_p0(
     Atom priority level.
     """
 
-    if parse_opt_punct(ctx, LPAREN).value:
+    # Parse parenthesis expression.
+    if parse_opt_punct(ctx, LPAREN):
         expr = parse_expr(ctx, builder)
         parse_punct(ctx, RPAREN)
         return Located(expr.loc, expr.value)
 
+    # Parse if-expr.
+    if if_expr := parse_opt_punct(ctx, IF):
+        cond = parse_expr(ctx, builder)
+
+        if not isinstance(cond.value.typ, ListLangBool):
+            raise ParseError(
+                cond.loc.pos,
+                f"expected {ListLangBool()} type for condition, got {cond.value.typ}",
+            )
+
+        then_block = Block()
+        then_builder = Builder(InsertPoint.at_start(then_block))
+        then_block_expr = parse_block(ctx, then_builder)
+        if then_block_expr.value.value is None:
+            raise ParseError(then_block_expr.value.loc.pos, "expected block expression")
+        then_builder.insert_op(scf.YieldOp(then_block_expr.value.value.value))
+
+        parse_punct(ctx, ELSE)
+
+        else_block = Block()
+        else_builder = Builder(InsertPoint.at_start(else_block))
+        else_block_expr = parse_block(ctx, else_builder)
+        print(else_block_expr)
+        if else_block_expr.value.value is None:
+            raise ParseError(else_block_expr.value.loc.pos, "expected block expression")
+        else_builder.insert_op(scf.YieldOp(else_block_expr.value.value.value))
+
+        if then_block_expr.value.value.typ != else_block_expr.value.value.typ:
+            raise ParseError(
+                else_block_expr.value.loc.pos,
+                f"else-block expression should be of type {then_block_expr.value.value.typ} "
+                f"to match then-block, but got {else_block_expr.value.value.typ}",
+            )
+
+        if_op = builder.insert_op(
+            scf.IfOp(
+                cond.value.value,
+                [then_block_expr.value.value.typ.xdsl()],
+                [then_block],
+                [else_block],
+            )
+        )
+
+        if_op.results[0].name_hint = "if_result"
+        return Located(
+            if_expr.loc,
+            TypedExpression(if_op.results[0], then_block_expr.value.value.typ),
+        )
+
+    # Parse integer constant.
     if (lit := parse_opt_integer(ctx)).value is not None:
         val = builder.insert_op(
             arith.ConstantOp(builtin.IntegerAttr(lit.value, XDSL_INT))
@@ -192,6 +265,19 @@ def _parse_opt_expr_p0(
         val.result.name_hint = f"c{lit.value}"
         return Located(lit.loc, TypedExpression(val.result, ListLangInt()))
 
+    # Parse false constant.
+    if false := parse_opt_punct(ctx, FALSE):
+        val = builder.insert_op(arith.ConstantOp(builtin.IntegerAttr(0, XDSL_BOOL)))
+        val.result.name_hint = "false"
+        return Located(false.loc, TypedExpression(val.result, ListLangBool()))
+
+    # Parse true constant.
+    if true := parse_opt_punct(ctx, TRUE):
+        val = builder.insert_op(arith.ConstantOp(builtin.IntegerAttr(1, XDSL_BOOL)))
+        val.result.name_hint = "true"
+        return Located(true.loc, TypedExpression(val.result, ListLangBool()))
+
+    # Parse binding.
     if (ident := parse_opt_identifier(ctx)).value is not None:
         if ident.value not in ctx.bindings:
             raise ParseError.from_loc(ident.loc, "unknown variable")
@@ -217,7 +303,7 @@ def _parse_opt_expr_p1(
     if (lhs := _parse_opt_expr_p0(ctx, builder)).value is None:
         return lhs
 
-    if not parse_opt_punct(ctx, STAR).value:
+    if not parse_opt_punct(ctx, STAR):
         return lhs
 
     rhs = _parse_expr_p0(ctx, builder)
@@ -235,7 +321,9 @@ def _parse_opt_expr_p1(
         )
 
     mul_op = builder.insert_op(arith.MuliOp(lhs.value.value, rhs.value.value))
-    mul_op.result.name_hint = f"{lhs.value.value.name_hint}_times_{rhs.value.value.name_hint}"
+    mul_op.result.name_hint = (
+        f"{lhs.value.value.name_hint}_times_{rhs.value.value.name_hint}"
+    )
     return Located(lhs.loc, TypedExpression(mul_op.result, lhs.value.typ))
 
 
@@ -255,7 +343,7 @@ def _parse_opt_expr_p2(
     if (lhs := _parse_opt_expr_p1(ctx, builder)).value is None:
         return lhs
 
-    if not parse_opt_punct(ctx, PLUS).value:
+    if not parse_opt_punct(ctx, PLUS):
         return lhs
 
     rhs = _parse_expr_p1(ctx, builder)
@@ -273,7 +361,9 @@ def _parse_opt_expr_p2(
         )
 
     add_op = builder.insert_op(arith.AddiOp(lhs.value.value, rhs.value.value))
-    add_op.result.name_hint = f"{lhs.value.value.name_hint}_plus_{rhs.value.value.name_hint}"
+    add_op.result.name_hint = (
+        f"{lhs.value.value.name_hint}_plus_{rhs.value.value.name_hint}"
+    )
     return Located(lhs.loc, TypedExpression(add_op.result, lhs.value.typ))
 
 
@@ -288,19 +378,19 @@ def parse_opt_any_comparator(ctx: ParsingContext) -> Located[str | None]:
     loc = Location(ctx.cursor.pos)
 
     def parse_unchecked() -> Located[str | None]:
-        if parse_opt_punct(ctx, EQUAL_CMP).value:
+        if parse_opt_punct(ctx, EQUAL_CMP):
             return Located(loc, "eq")
 
-        if parse_opt_punct(ctx, LT_CMP).value:
+        if parse_opt_punct(ctx, LT_CMP):
             return Located(loc, "ult")
 
-        if parse_opt_punct(ctx, GT_CMP).value:
+        if parse_opt_punct(ctx, GT_CMP):
             return Located(loc, "ugt")
 
-        if parse_opt_punct(ctx, LTE_CMP).value:
+        if parse_opt_punct(ctx, LTE_CMP):
             return Located(loc, "ule")
 
-        if parse_opt_punct(ctx, GTE_CMP).value:
+        if parse_opt_punct(ctx, GTE_CMP):
             return Located(loc, "uge")
 
         return Located(loc, None)
@@ -340,9 +430,10 @@ def _parse_opt_expr_p3(
     cmpi_op = builder.insert_op(
         arith.CmpiOp(lhs.value.value, rhs.value.value, cmp.value)
     )
-    cast_op = builder.insert_op(arith.ExtUIOp(cmpi_op.result, XDSL_INT))
-    cast_op.result.name_hint = f"{lhs.value.value.name_hint}_{cmp.value}_{rhs.value.value.name_hint}"
-    return Located(lhs.loc, TypedExpression(cast_op.result, lhs.value.typ))
+    cmpi_op.result.name_hint = (
+        f"{lhs.value.value.name_hint}_{cmp.value}_{rhs.value.value.name_hint}"
+    )
+    return Located(lhs.loc, TypedExpression(cmpi_op.result, ListLangBool()))
 
 
 def _parse_expr_p3(ctx: ParsingContext, builder: Builder) -> Located[TypedExpression]:
@@ -370,7 +461,7 @@ def parse_opt_let_statement(ctx: ParsingContext, builder: Builder) -> Located[bo
     Returns True if a binding was found, False otherwise.
     """
 
-    if not (let := parse_opt_punct(ctx, LET)).value:
+    if not (let := parse_opt_punct(ctx, LET)):
         return let
 
     binding_name = parse_identifier(ctx)
@@ -419,6 +510,28 @@ def parse_block_content(
     return Located(start_loc, parse_opt_expr(ctx, builder))
 
 
+def parse_block(
+    ctx: ParsingContext, builder: Builder
+) -> Located[Located[TypedExpression | None]]:
+    """
+    Parses a block and returns its trailing expression, if there is one. The
+    first location is the start of the block content, while the second location
+    is the start of where the trailing expression is or would be.
+
+    The scope of bindings within the block is contained, meaning a new scope
+    level is added to the binding dictionary when parsing the block.
+    """
+
+    ctx.bindings = ScopedDict(ctx.bindings)
+    parse_punct(ctx, LCURL)
+    res = parse_block_content(ctx, builder)
+    parse_punct(ctx, RCURL)
+    assert ctx.bindings.parent is not None
+    ctx.bindings = ctx.bindings.parent
+
+    return res
+
+
 ## Program
 
 
@@ -440,7 +553,13 @@ if __name__ == "__main__":
         let x = 4;
         let y = 3;
         let z = y + 3 * (x + y);
-        x * z == 0
+        let w = if x * z == 0 {
+            x + 1
+        } else {
+            let tmp = y + 1;
+            if true { tmp * z } else { 0 }
+        } * 2;
+        w + 3
     """
 
     module = builtin.ModuleOp([])
