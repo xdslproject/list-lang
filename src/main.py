@@ -14,7 +14,8 @@ RESERVED_KEYWORDS = ["let", "if", "else", "true", "false"]
 IDENT = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*")
 INTEGER = re.compile(r"[0-9]+")
 
-WHITESPACES = re.compile(r"\s*")
+COMMENTS = r"(?:\/\/[^\n\r]+?(?:\*\)|[\n\r]))"
+WHITESPACES = re.compile(r"(?:\s|" + COMMENTS + r")*")
 
 
 @dataclass
@@ -548,22 +549,13 @@ def parse_program(code: str, builder: Builder) -> Located[TypedExpression | None
 
 if __name__ == "__main__":
 
-    TEST_PROGRAM = """
-        let x = 4;
-        let y = 3;
-        let z = y + 3 * (x + y);
-        let w = if x * z == 0 {
-            x + 1
-        } else {
-            let tmp = y + 1;
-            if true { tmp * z } else { 0 }
-        } * 2;
-        w + 3
-    """
+    import fileinput
+    program = "\n".join(fileinput.input())
 
     module = builtin.ModuleOp([])
     builder = Builder(InsertPoint.at_start(module.body.block))
 
-    parse_program(TEST_PROGRAM, builder)
+    parse_program(program, builder)
 
     Printer().print_op(module)
+    print()
