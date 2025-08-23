@@ -26,4 +26,4 @@ jobs:
         run: uv sync
 
       - name: Run lit tests
-        run: uv run lit tests
+        run: uv run lit -v tests
