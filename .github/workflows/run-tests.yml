@@ -23,7 +23,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Install Python dependencies
-        run: uv pip install -r requirements.txt
+        run: uv sync
 
       - name: Run lit tests
         run: lit tests
