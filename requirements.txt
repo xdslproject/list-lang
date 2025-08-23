@@ -1,5 +1,0 @@
-xdsl @ git+https://github.com/xdslproject/xdsl
-filecheck
-lit
-pytest
--e .
