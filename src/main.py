@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import re
+import io
 
 from xdsl.dialects import arith, builtin, scf
 from xdsl.builder import Builder
@@ -546,16 +547,22 @@ def parse_program(code: str, builder: Builder) -> Located[TypedExpression | None
 
     return parse_block_content(ParsingContext(code), builder).value
 
+def program_to_mlir(code: str) -> str:
+    module = builtin.ModuleOp([])
+    builder = Builder(InsertPoint.at_start(module.body.block))
+
+    parse_program(program, builder)
+
+    output = io.StringIO()
+    Printer(stream=output).print_op(module)
+    return output.getvalue()
 
 if __name__ == "__main__":
 
     import fileinput
     program = "\n".join(fileinput.input())
 
-    module = builtin.ModuleOp([])
-    builder = Builder(InsertPoint.at_start(module.body.block))
+    output = program_to_mlir(program)
 
-    parse_program(program, builder)
-
-    Printer().print_op(module)
+    print(output)
     print()
