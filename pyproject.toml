@@ -5,15 +5,11 @@ requires-python = ">=3.12"
 license = { text = "MIT License" }
 authors = [{ name = "Théo Degioanni" }]
 classifiers = ["Programming Language :: Python :: 3"]
-dependencies = [ "xdsl @ git+https://github.com/xdslproject/xdsl" ]
+dependencies = ["xdsl @ git+https://github.com/xdslproject/xdsl"]
 dynamic = ["version"]
 
 [dependency-groups]
-dev = [
-    "lit",
-    "pytest",
-    "filecheck",
-]
+dev = ["filecheck", "lit", "pytest", "pre-commit>=4.0.0,<5.0.0", "ruff==0.12.9"]
 
 [tool.setuptools]
 platforms = ["Linux", "Mac OS-X", "Unix"]
@@ -34,12 +30,13 @@ typeCheckingMode = "strict"
 profile = "black"
 
 [tool.ruff]
-select = ["E", "F", "W", "I", "UP", "PT", "TID251"]
-ignore = ["PT015"]
-line-length = 120
-target-version = "py311"
+lint.select = ["E", "F", "W", "I", "UP", "PT", "TID251"]
+lint.ignore = ["PT015"]
+line-length = 80
+target-version = "py312"
+exclude = ["lit.cfg.py"]
 
-[tool.ruff.mccabe]
+[tool.ruff.lint.mccabe]
 max-complexity = 10
 
 [tool.black]
