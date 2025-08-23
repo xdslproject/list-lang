@@ -5,6 +5,8 @@ from xdsl.dialects import arith, builtin, scf
 from xdsl.builder import Builder
 from xdsl.utils.scoped_dict import ScopedDict
 from xdsl.ir import Attribute, Block, SSAValue
+from xdsl.rewriter import InsertPoint
+from xdsl.printer import Printer
 
 
 RESERVED_KEYWORDS = ["let", "if", "else", "true", "false"]
@@ -545,8 +547,6 @@ def parse_program(code: str, builder: Builder) -> Located[TypedExpression | None
 
 
 if __name__ == "__main__":
-    from xdsl.rewriter import InsertPoint
-    from xdsl.printer import Printer
 
     TEST_PROGRAM = """
         let x = 4;
