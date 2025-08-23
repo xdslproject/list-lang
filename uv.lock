@@ -45,7 +45,7 @@ dependencies = [
     { name = "xdsl" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "filecheck" },
     { name = "lit" },
@@ -53,13 +53,14 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "filecheck", marker = "extra == 'dev'" },
-    { name = "lit", marker = "extra == 'dev'" },
-    { name = "pytest", marker = "extra == 'dev'" },
-    { name = "xdsl", git = "https://github.com/xdslproject/xdsl" },
+requires-dist = [{ name = "xdsl", git = "https://github.com/xdslproject/xdsl" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "filecheck" },
+    { name = "lit" },
+    { name = "pytest" },
 ]
-provides-extras = ["dev"]
 
 [[package]]
 name = "lit"

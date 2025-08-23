@@ -8,7 +8,7 @@ classifiers = ["Programming Language :: Python :: 3"]
 dependencies = [ "xdsl @ git+https://github.com/xdslproject/xdsl" ]
 dynamic = ["version"]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "lit",
     "pytest",
