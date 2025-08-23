@@ -1,4 +1,4 @@
-name: Run Tests
+name: CI - Sanity Checks
 
 on:
   pull_request:
@@ -24,6 +24,9 @@ jobs:
 
       - name: Install Python dependencies
         run: uv sync
+
+      - name: Check code style pre-commit hooks
+        uses: pre-commit/action@v3.0.1
 
       - name: Run lit tests
         run: uv run lit -v tests
