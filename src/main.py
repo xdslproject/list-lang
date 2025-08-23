@@ -308,7 +308,7 @@ def _parse_opt_expr_p1(
     if not parse_opt_punct(ctx, STAR):
         return lhs
 
-    rhs = _parse_expr_p0(ctx, builder)
+    rhs = _parse_expr_p1(ctx, builder)
 
     if not isinstance(lhs.value.typ, ListLangInt):
         raise ParseError(
@@ -348,7 +348,7 @@ def _parse_opt_expr_p2(
     if not parse_opt_punct(ctx, PLUS):
         return lhs
 
-    rhs = _parse_expr_p1(ctx, builder)
+    rhs = _parse_expr_p2(ctx, builder)
 
     if not isinstance(lhs.value.typ, ListLangInt):
         raise ParseError(
@@ -415,7 +415,7 @@ def _parse_opt_expr_p3(
     if (cmp := parse_opt_any_comparator(ctx)).value is None:
         return lhs
 
-    rhs = _parse_expr_p2(ctx, builder)
+    rhs = _parse_expr_p3(ctx, builder)
 
     if not isinstance(lhs.value.typ, ListLangInt):
         raise ParseError(
