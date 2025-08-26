@@ -55,8 +55,6 @@ LPAREN = Punctuation(re.compile(r"\("), "left parenthesis")
 RPAREN = Punctuation(re.compile(r"\)"), "right parenthesis")
 LCURL = Punctuation(re.compile(r"\{"), "left curly bracket")
 RCURL = Punctuation(re.compile(r"\}"), "right curly bracket")
-LSQUARE = Punctuation(re.compile(r"\["), "left square bracket")
-RSQUARE = Punctuation(re.compile(r"\]"), "right square bracket")
 
 
 XDSL_INT = builtin.IntegerType(32)
@@ -334,41 +332,6 @@ def _parse_opt_expr_atom(
         negated.result.name_hint = f"not_{to_negate.value.value.name_hint}"
         return Located(neg.loc, TypedExpression(negated.result, ListLangBool()))
 
-    # Parse list range.
-    if lsq := parse_opt_punct(ctx, LSQUARE):
-        lower = parse_expr(ctx, builder)
-        parse_punct(ctx, RANGE)
-        upper = parse_expr(ctx, builder)
-        parse_punct(ctx, RSQUARE)
-
-        if not isinstance(lower.value.typ, ListLangInt):
-            raise ParseError(
-                lower.loc.pos,
-                f"expected {ListLangInt()} type for range lower bound, "
-                f"got {lower.value.typ}",
-            )
-
-        if not isinstance(upper.value.typ, ListLangInt):
-            raise ParseError(
-                upper.loc.pos,
-                f"expected {ListLangInt()} type for range upper bound, "
-                f"got {upper.value.typ}",
-            )
-
-        list_type = ListLangList(ListLangInt())
-        list_range = builder.insert(
-            list_dialect.RangeOp(
-                lower.value.value,
-                upper.value.value,
-                list_type.xdsl(),
-            )
-        )
-        list_range.result.name_hint = "int_list"
-        return Located(
-            lsq.loc,
-            TypedExpression(list_range.result, list_type),
-        )
-
     # Parse binding.
     if (ident := parse_opt_identifier(ctx)).value is not None:
         if ident.value not in ctx.bindings:
@@ -466,6 +429,45 @@ class Addition(BinaryOp):
             f"{lhs.value.value.name_hint}_plus_{rhs.value.value.name_hint}"
         )
         return TypedExpression(add_op.result, lhs.value.typ)
+
+
+class ListRange(BinaryOp):
+    def parse_opt_glyph(self, ctx: ParsingContext) -> Located[bool]:
+        return parse_opt_punct(ctx, RANGE)
+
+    def build(
+        self,
+        builder: Builder,
+        lhs: Located[TypedExpression],
+        rhs: Located[TypedExpression],
+    ) -> TypedExpression:
+        lower = lhs
+        upper = rhs
+
+        if not isinstance(lower.value.typ, ListLangInt):
+            raise ParseError(
+                lower.loc.pos,
+                f"expected {ListLangInt()} type for range lower bound, "
+                f"got {lower.value.typ}",
+            )
+
+        if not isinstance(upper.value.typ, ListLangInt):
+            raise ParseError(
+                upper.loc.pos,
+                f"expected {ListLangInt()} type for range upper bound, "
+                f"got {upper.value.typ}",
+            )
+
+        list_type = ListLangList(ListLangInt())
+        list_range = builder.insert(
+            list_dialect.RangeOp(
+                lower.value.value,
+                upper.value.value,
+                list_type.xdsl(),
+            )
+        )
+        list_range.result.name_hint = "int_list"
+        return TypedExpression(list_range.result, list_type)
 
 
 @dataclass
@@ -574,6 +576,7 @@ PARSE_BINOP_PRIORITY: tuple[tuple[BinaryOp, ...], ...] = (
     (Multiplication(),),
     (Addition(),),
     (
+        ListRange(),
         Comparator(EQUAL_CMP, "eq"),
         Comparator(LTE_CMP, "ule"),
         Comparator(GTE_CMP, "uge"),
