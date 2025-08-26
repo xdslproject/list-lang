@@ -11,6 +11,8 @@ from xdsl.printer import Printer
 from xdsl.rewriter import InsertPoint
 from xdsl.utils.scoped_dict import ScopedDict
 
+import list_dialect
+
 RESERVED_KEYWORDS = ["let", "if", "else", "true", "false"]
 
 IDENT = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*")
@@ -37,6 +39,7 @@ FALSE = Punctuation(re.compile(r"false"), "'false'")
 
 STAR = Punctuation(re.compile(r"\*"), "star")
 PLUS = Punctuation(re.compile(r"\+"), "plus")
+RANGE = Punctuation(re.compile(r"\.\."), "range")
 
 EQUAL_CMP = Punctuation(re.compile(r"=="), "equality comparator")
 LT_CMP = Punctuation(re.compile(r"<"), "less than comparator")
@@ -52,6 +55,8 @@ LPAREN = Punctuation(re.compile(r"\("), "left parenthesis")
 RPAREN = Punctuation(re.compile(r"\)"), "right parenthesis")
 LCURL = Punctuation(re.compile(r"\{"), "left curly bracket")
 RCURL = Punctuation(re.compile(r"\}"), "right curly bracket")
+LSQUARE = Punctuation(re.compile(r"\["), "left square bracket")
+RSQUARE = Punctuation(re.compile(r"\]"), "right square bracket")
 
 
 XDSL_INT = builtin.IntegerType(32)
@@ -85,7 +90,7 @@ class ListLangInt(ListLangType):
     def __str__(self) -> str:
         return "int"
 
-    def xdsl(self) -> Attribute:
+    def xdsl(self) -> builtin.IntegerType:
         return XDSL_INT
 
 
@@ -94,8 +99,19 @@ class ListLangBool(ListLangType):
     def __str__(self) -> str:
         return "bool"
 
-    def xdsl(self) -> Attribute:
+    def xdsl(self) -> builtin.IntegerType:
         return XDSL_BOOL
+
+
+@dataclass
+class ListLangList(ListLangType):
+    element_type: ListLangBool | ListLangInt
+
+    def __str__(self) -> str:
+        return f"list<{self.element_type}>"
+
+    def xdsl(self) -> list_dialect.ListType:
+        return list_dialect.ListType(self.element_type.xdsl())
 
 
 @dataclass
@@ -317,6 +333,41 @@ def _parse_opt_expr_atom(
         )
         negated.result.name_hint = f"not_{to_negate.value.value.name_hint}"
         return Located(neg.loc, TypedExpression(negated.result, ListLangBool()))
+
+    # Parse list range.
+    if lsq := parse_opt_punct(ctx, LSQUARE):
+        lower = parse_expr(ctx, builder)
+        parse_punct(ctx, RANGE)
+        upper = parse_expr(ctx, builder)
+        parse_punct(ctx, RSQUARE)
+
+        if not isinstance(lower.value.typ, ListLangInt):
+            raise ParseError(
+                lower.loc.pos,
+                f"expected {ListLangInt()} type for range lower bound, "
+                f"got {lower.value.typ}",
+            )
+
+        if not isinstance(upper.value.typ, ListLangInt):
+            raise ParseError(
+                upper.loc.pos,
+                f"expected {ListLangInt()} type for range upper bound, "
+                f"got {upper.value.typ}",
+            )
+
+        list_type = ListLangList(ListLangInt())
+        list_range = builder.insert(
+            list_dialect.RangeOp(
+                lower.value.value,
+                upper.value.value,
+                list_type.xdsl(),
+            )
+        )
+        list_range.result.name_hint = "int_list"
+        return Located(
+            lsq.loc,
+            TypedExpression(list_range.result, list_type),
+        )
 
     # Parse binding.
     if (ident := parse_opt_identifier(ctx)).value is not None:
