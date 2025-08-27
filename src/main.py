@@ -537,6 +537,7 @@ def _parse_opt_expr_atom_with_methods(
         parse_punct(ctx, RPAREN)
 
         x = Located(x.loc, method.build(builder, x, lambda_info))
+        x.value.value.name_hint = method.name
 
     return cast(Located[TypedExpression | None], x)
 
