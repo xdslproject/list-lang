@@ -1,8 +1,9 @@
 import io
 import re
 from dataclasses import dataclass
-from typing import cast
+from typing import Generic, cast
 
+from typing_extensions import TypeVar
 from xdsl.builder import Builder
 from xdsl.dialects import arith, builtin, scf
 from xdsl.ir import Attribute, Block, SSAValue
@@ -62,8 +63,11 @@ class Location:
     pos: int
 
 
+T = TypeVar("T")
+
+
 @dataclass
-class Located[T]:
+class Located(Generic[T]):  # noqa: UP046
     loc: Location
     value: T
 
