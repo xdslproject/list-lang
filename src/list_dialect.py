@@ -71,7 +71,7 @@ class MapOp(IRDLOperation):
         printer.print_string(" with (")
         printer.print_block_argument(self.body.block.args[0])
         printer.print_string(") -> ")
-        printer.print_attribute(self.result_types[0])
+        printer.print_attribute(self.result.type.elem_type)
         printer.print_string(" ")
         printer.print_region(self.body, print_entry_block_args=False)
         printer.print_op_attributes(self.attributes)
