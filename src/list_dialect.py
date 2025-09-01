@@ -13,12 +13,14 @@ from xdsl.irdl import (
     IRDLOperation,
     irdl_attr_definition,
     irdl_op_definition,
+    lazy_traits_def,
     operand_def,
     region_def,
     result_def,
 )
 from xdsl.parser import Parser
 from xdsl.printer import Printer
+from xdsl.traits import HasParent, IsTerminator
 from xdsl.utils.exceptions import VerifyException
 from xdsl.utils.hints import isa
 
@@ -127,14 +129,14 @@ class MapOp(IRDLOperation):
 class PrintOp(IRDLOperation):
     name = "list.print"
 
-    printed = operand_def(ListType)
+    li = operand_def(ListType)
 
-    def __init__(self, printed: SSAValue):
+    def __init__(self, li: SSAValue):
         super().__init__(
-            operands=[printed],
+            operands=[li],
         )
 
-    assembly_format = "$printed attr-dict `:` type($printed)"
+    assembly_format = "$li attr-dict `:` type($li)"
 
 
 @irdl_op_definition
@@ -159,6 +161,13 @@ class YieldOp(IRDLOperation):
     name = "list.yield"
 
     yielded = operand_def(AnyOf([builtin.IntegerType, ListType]))
+
+    traits = lazy_traits_def(
+        lambda: (
+            IsTerminator(),
+            HasParent(MapOp),
+        )
+    )
 
     def __init__(self, yielded: SSAValue):
         super().__init__(

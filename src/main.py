@@ -2,25 +2,31 @@ import io
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Generic, cast
+from typing import cast
 
 from typing_extensions import TypeVar
 from xdsl.builder import Builder
-from xdsl.dialects import arith, builtin, printf, scf
-from xdsl.ir import Attribute, Block, Region, SSAValue
+from xdsl.dialects import arith, builtin, scf
+from xdsl.ir import Block, SSAValue
 from xdsl.printer import Printer
 from xdsl.rewriter import InsertPoint
 from xdsl.utils.scoped_dict import ScopedDict
 
 import list_dialect
+import lowerings
+from lang_types import (
+    ListLangBool,
+    ListLangInt,
+    ListLangList,
+    ListLangType,
+    TypedExpression,
+)
+from source import CodeCursor, Located, Location, ParseError
 
 RESERVED_KEYWORDS = ["let", "if", "else", "true", "false"]
 
 IDENT = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*")
 INTEGER = re.compile(r"[0-9]+")
-
-COMMENTS = r"(?:\/\/[^\n\r]+?(?:\*\)|[\n\r]))"
-WHITESPACES = re.compile(r"(?:\s|" + COMMENTS + r")*")
 
 
 @dataclass
@@ -62,127 +68,10 @@ LCURL = Punctuation(re.compile(r"\{"), "left curly bracket")
 RCURL = Punctuation(re.compile(r"\}"), "right curly bracket")
 
 
-XDSL_INT = builtin.IntegerType(32)
-XDSL_BOOL = builtin.IntegerType(1)
-
-
-@dataclass
-class Location:
-    pos: int
-
-
-T = TypeVar("T")
-
-
-@dataclass
-class Located(Generic[T]):  # noqa: UP046
-    loc: Location
-    value: T
-
-    def __bool__(self) -> bool:
-        return bool(self.value)
-
-
-class ListLangType:
-    def __str__(self) -> str: ...
-    def xdsl(self) -> Attribute: ...
-    def print(self, builder: Builder, value: SSAValue): ...
-    def get_method(self, method: str) -> "Method | None":
-        return None
-
-
-@dataclass
-class ListLangInt(ListLangType):
-    def __str__(self) -> str:
-        return "int"
-
-    def xdsl(self) -> builtin.IntegerType:
-        return XDSL_INT
-
-    def print(self, builder: Builder, value: SSAValue):
-        builder.insert_op(printf.PrintFormatOp("{}", value))
-
-
-@dataclass
-class ListLangBool(ListLangType):
-    def __str__(self) -> str:
-        return "bool"
-
-    def xdsl(self) -> builtin.IntegerType:
-        return XDSL_BOOL
-
-    def print(self, builder: Builder, value: SSAValue):
-        builder.insert_op(
-            scf.IfOp(
-                value,
-                [],
-                Region(Block([printf.PrintFormatOp("true")])),
-                Region(Block([printf.PrintFormatOp("false")])),
-            )
-        )
-
-
-LIST_ELEMENT_TYPE = ListLangBool | ListLangInt
-
-
-@dataclass
-class ListLangList(ListLangType):
-    element_type: LIST_ELEMENT_TYPE
-
-    def __str__(self) -> str:
-        return f"list<{self.element_type}>"
-
-    def xdsl(self) -> list_dialect.ListType:
-        return list_dialect.ListType(self.element_type.xdsl())
-
-    def print(self, builder: Builder, value: SSAValue):
-        builder.insert_op(list_dialect.PrintOp(value))
-
-    def get_method(self, method: str) -> "Method | None":
-        match method:
-            case "len":
-                return ListLenMethod()
-            case "map":
-                return ListMapMethod()
-            case _:
-                return None
-
-
 @dataclass
 class Binding:
     value: SSAValue
     typ: ListLangType
-
-
-class CodeCursor:
-    code: str
-    pos: int
-
-    def __init__(self, code: str):
-        self.code = code
-        self.pos = 0
-
-    def _whitespace_end(self) -> int:
-        match = WHITESPACES.match(self.code, self.pos)
-        assert match is not None
-        return match.end()
-
-    def skip_whitespaces(self):
-        self.pos = self._whitespace_end()
-
-    def next_regex(
-        self, regex: re.Pattern[str]
-    ) -> Located[re.Match[str] | None]:
-        match = self.peek_regex(regex)
-        if match.value is not None:
-            self.pos = match.value.end()
-        return match
-
-    def peek_regex(
-        self, regex: re.Pattern[str]
-    ) -> Located[re.Match[str] | None]:
-        pos = self._whitespace_end()
-        return Located(Location(pos), regex.match(self.code, pos))
 
 
 class ParsingContext:
@@ -193,25 +82,8 @@ class ParsingContext:
         self.cursor = CodeCursor(code)
         self.bindings = ScopedDict()
 
-
-@dataclass
-class ParseError(Exception):
-    position: int
-    msg: str
-
-    @staticmethod
-    def from_ctx(ctx: ParsingContext, msg: str) -> "ParseError":
-        return ParseError(ctx.cursor.pos, msg)
-
-    @staticmethod
-    def from_loc(loc: Location, msg: str) -> "ParseError":
-        return ParseError(loc.pos, msg)
-
-
-@dataclass
-class TypedExpression:
-    value: SSAValue
-    typ: ListLangType
+    def error(self, msg: str) -> ParseError:
+        return ParseError(self.cursor.pos, msg)
 
 
 ## Utils
@@ -227,7 +99,7 @@ def parse_opt_punct(ctx: ParsingContext, punct: Punctuation) -> Located[bool]:
 
 def parse_punct(ctx: ParsingContext, punct: Punctuation) -> Location:
     if not (located := parse_opt_punct(ctx, punct)):
-        raise ParseError.from_ctx(ctx, f"expected {punct.name}")
+        raise ctx.error(f"expected {punct.name}")
     return located.loc
 
 
@@ -241,7 +113,7 @@ def parse_opt_identifier(ctx: ParsingContext) -> Located[str | None]:
 
 def parse_identifier(ctx: ParsingContext) -> Located[str]:
     if (ident := parse_opt_identifier(ctx)).value is None:
-        raise ParseError.from_ctx(ctx, "expected variable identifier")
+        raise ctx.error("expected variable identifier")
     return Located(ident.loc, ident.value)
 
 
@@ -255,8 +127,11 @@ def parse_opt_integer(ctx: ParsingContext) -> Located[int | None]:
 
 def parse_integer(ctx: ParsingContext) -> Located[int]:
     if (lit := parse_opt_integer(ctx)).value is None:
-        raise ParseError.from_ctx(ctx, "expected integer constant")
+        raise ctx.error("expected integer constant")
     return Located(lit.loc, lit.value)
+
+
+T = TypeVar("T")
 
 
 # TODO: Drop Python 3.11 support to use proper type parameters.
@@ -354,7 +229,9 @@ def _parse_opt_expr_atom(
     # Parse integer constant.
     if (lit := parse_opt_integer(ctx)).value is not None:
         val = builder.insert_op(
-            arith.ConstantOp(builtin.IntegerAttr(lit.value, XDSL_INT))
+            arith.ConstantOp(
+                builtin.IntegerAttr(lit.value, ListLangInt().xdsl())
+            )
         )
         val.result.name_hint = f"c{lit.value}"
         return Located(lit.loc, TypedExpression(val.result, ListLangInt()))
@@ -362,7 +239,7 @@ def _parse_opt_expr_atom(
     # Parse false constant.
     if false := parse_opt_punct(ctx, FALSE):
         val = builder.insert_op(
-            arith.ConstantOp(builtin.IntegerAttr(0, XDSL_BOOL))
+            arith.ConstantOp(builtin.IntegerAttr(0, ListLangBool().xdsl()))
         )
         val.result.name_hint = "false"
         return Located(false.loc, TypedExpression(val.result, ListLangBool()))
@@ -370,7 +247,7 @@ def _parse_opt_expr_atom(
     # Parse true constant.
     if true := parse_opt_punct(ctx, TRUE):
         val = builder.insert_op(
-            arith.ConstantOp(builtin.IntegerAttr(1, XDSL_BOOL))
+            arith.ConstantOp(builtin.IntegerAttr(1, ListLangBool().xdsl()))
         )
         val.result.name_hint = "true"
         return Located(true.loc, TypedExpression(val.result, ListLangBool()))
@@ -385,7 +262,7 @@ def _parse_opt_expr_atom(
                 f"got {to_negate.value.typ}",
             )
         true = builder.insert_op(
-            arith.ConstantOp(builtin.IntegerAttr(1, XDSL_BOOL))
+            arith.ConstantOp(builtin.IntegerAttr(1, ListLangBool().xdsl()))
         )
         negated = builder.insert_op(
             arith.XOrIOp(to_negate.value.value, true.result)
@@ -412,89 +289,6 @@ def _parse_expr_atom(
 
 
 ### Methods
-
-
-class Method:
-    name: str
-
-    def get_lambda_arg_type(
-        self, x: ListLangType
-    ) -> Sequence[ListLangType] | None:
-        """
-        From the type on which the method was invoked, returns the types of the
-        arguments of the method's lambda if there is one, or None if there is
-        no lambda.
-        """
-        ...
-
-    def build(
-        self,
-        builder: Builder,
-        x: Located[TypedExpression],
-        lambd: Located[tuple[Block, ListLangType]] | None,
-    ) -> TypedExpression:
-        """
-        Builds the method's execution.
-
-        `lambd` contains a free-standing block containing the lambda
-        instructions that must be inlined as needed, and the type of the final
-        expression of the block. The associated location is the location of
-        the result expression.
-        """
-        ...
-
-
-class ListLenMethod(Method):
-    name = "len"
-
-    def get_lambda_arg_type(
-        self, x: ListLangType
-    ) -> Sequence[ListLangType] | None:
-        return None
-
-    def build(
-        self,
-        builder: Builder,
-        x: Located[TypedExpression],
-        lambd: Located[tuple[Block, ListLangType]] | None,
-    ) -> TypedExpression:
-        assert lambd is None
-        assert isinstance(x.value.typ, ListLangList)
-
-        len_op = builder.insert_op(list_dialect.LengthOp(x.value.value))
-        return TypedExpression(len_op.result, ListLangInt())
-
-
-class ListMapMethod(Method):
-    name = "map"
-
-    def get_lambda_arg_type(
-        self, x: ListLangType
-    ) -> Sequence[ListLangType] | None:
-        assert isinstance(x, ListLangList)
-        return (x.element_type,)
-
-    def build(
-        self,
-        builder: Builder,
-        x: Located[TypedExpression],
-        lambd: Located[tuple[Block, ListLangType]] | None,
-    ) -> TypedExpression:
-        assert lambd is not None
-        assert isinstance(x.value.typ, ListLangList)
-
-        if not isinstance(lambd.value[1], LIST_ELEMENT_TYPE):
-            raise ParseError(
-                lambd.loc.pos, "expected expression of list-element type"
-            )
-
-        map_op = builder.insert_op(
-            list_dialect.MapOp(
-                x.value.value, Region([lambd.value[0]]), lambd.value[1].xdsl()
-            )
-        )
-
-        return TypedExpression(map_op.result, ListLangList(lambd.value[1]))
 
 
 def _parse_opt_expr_atom_with_methods(
@@ -966,22 +760,55 @@ def parse_program(code: str, builder: Builder):
     expr.typ.print(builder, expr.value)
 
 
-def program_to_mlir(code: str) -> str:
+def program_to_mlir_module(code: str) -> builtin.ModuleOp:
     module = builtin.ModuleOp([])
     builder = Builder(InsertPoint.at_start(module.body.block))
 
     parse_program(code, builder)
 
+    return module
+
+
+def program_to_mlir_string(code: str):
     output = io.StringIO()
-    Printer(stream=output).print_op(module)
+    Printer(stream=output).print_op(program_to_mlir_module(code))
     return output.getvalue()
 
 
 if __name__ == "__main__":
-    import fileinput
+    import argparse
+    import sys
 
-    program = "\n".join(fileinput.input())
+    from xdsl.context import Context
 
-    output = program_to_mlir(program)
+    arg_parser = argparse.ArgumentParser(
+        prog="list-lang",
+        description="Parses list-lang programs and transforms them.",
+    )
 
-    print(output)
+    arg_parser.add_argument(
+        "filename",
+        nargs="?",
+        type=argparse.FileType("r"),
+        default=sys.stdin,
+        help="file to read (defaults to stdin)",
+    )
+
+    arg_parser.add_argument(
+        "-t",
+        "--to-tensor",
+        action="store_true",
+        help="lower program to tensor dialect",
+    )
+
+    args = arg_parser.parse_args()
+
+    module = program_to_mlir_module(args.filename.read())
+
+    if args.to_tensor:
+        ctx = Context()
+        print(module)
+        lowerings.LowerListToTensor().apply(ctx, module)
+
+    Printer(print_generic_format=True).print_op(module)
+    print()
