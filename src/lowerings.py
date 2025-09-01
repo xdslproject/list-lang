@@ -63,18 +63,31 @@ class LowerMapOp(RewritePattern):
         list_len = rewriter.insert_op(tensor.DimOp(op.li, zero))
 
         tensor_type = _list_type_to_tensor(op.li.type)
+        result_tensor_type = _list_type_to_tensor(op.result.type)
+
+        result_uninit = rewriter.insert_op(
+            tensor.EmptyOp([list_len.result], result_tensor_type)
+        )
+        result_uninit.results[0].name_hint = _name_hint_ext(
+            op.result.name_hint, "uninit"
+        )
+
+        rewriter_ip = rewriter.insertion_point
 
         for_body = Block(
             [],
-            arg_types=(builtin.IndexType(), tensor_type),
+            arg_types=(builtin.IndexType(), result_tensor_type),
         )
         ind_var = for_body.args[0]
         ind_var.name_hint = "i"
         tensor_arg = for_body.args[1]
 
-        x = tensor.ExtractOp(tensor_arg, [ind_var], tensor_type.element_type)
+        rewriter.insertion_point = InsertPoint.at_start(for_body)
+
+        x = rewriter.insert_op(
+            tensor.ExtractOp(tensor_arg, [ind_var], tensor_type.element_type)
+        )
         x.result.name_hint = op.body.block.args[0].name_hint
-        for_body.add_op(x)
 
         rewriter.inline_block(
             op.body.block, InsertPoint.at_end(for_body), (x.result,)
@@ -83,18 +96,21 @@ class LowerMapOp(RewritePattern):
         closure_yield = for_body.last_op
         assert isa(closure_yield, list_dialect.YieldOp)
         result_scalar = closure_yield.yielded
-        for_body.erase_op(closure_yield)
+        rewriter.erase_op(closure_yield)
 
-        result = tensor.InsertOp(result_scalar, tensor_arg, [ind_var])
-        for_body.add_op(result)
+        result = rewriter.insert_op(
+            tensor.InsertOp(result_scalar, tensor_arg, [ind_var])
+        )
 
-        for_body.add_op(scf.YieldOp(result.result))
+        rewriter.insert_op(scf.YieldOp(result.result))
+
+        rewriter.insertion_point = rewriter_ip
 
         for_op = scf.ForOp(
             zero,
             list_len,
             one,
-            [op.li],
+            result_uninit.results,
             for_body,
         )
         for_op.results[0].name_hint = op.result.name_hint
@@ -165,13 +181,6 @@ class LowerRangeOp(RewritePattern):
             op.result.name_hint, "length"
         )
 
-        start_offset = rewriter.insert_op(
-            arith.IndexCastOp(op.lower, builtin.IndexType())
-        )
-        start_offset.result.name_hint = _name_hint_ext(
-            op.result.name_hint, "start_offset"
-        )
-
         tensor_type = _list_type_to_tensor(op.result.type)
         start_tensor = rewriter.insert_op(
             tensor.EmptyOp((tensor_length_index.result,), tensor_type)
@@ -189,7 +198,10 @@ class LowerRangeOp(RewritePattern):
         tensor_arg = for_body.args[1]
 
         body_builder = Builder(InsertPoint.at_start(for_body))
-        offseted = body_builder.insert_op(arith.AddiOp(start_offset, ind_var))
+        ind_var_32 = body_builder.insert_op(
+            arith.IndexCastOp(ind_var, builtin.i32)
+        )
+        offseted = body_builder.insert_op(arith.AddiOp(op.lower, ind_var_32))
         modified = body_builder.insert_op(
             tensor.InsertOp(offseted.result, tensor_arg, [ind_var])
         )

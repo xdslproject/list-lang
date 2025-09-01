@@ -780,6 +780,7 @@ if __name__ == "__main__":
     import sys
 
     from xdsl.context import Context
+    from xdsl.transforms import printf_to_llvm
 
     arg_parser = argparse.ArgumentParser(
         prog="list-lang",
@@ -795,20 +796,23 @@ if __name__ == "__main__":
     )
 
     arg_parser.add_argument(
-        "-t",
-        "--to-tensor",
-        action="store_true",
-        help="lower program to tensor dialect",
+        "--to", choices=["tensor", "mlir"], help="conversion target"
     )
 
     args = arg_parser.parse_args()
 
     module = program_to_mlir_module(args.filename.read())
 
-    if args.to_tensor:
+    def lower_down_to(target: str | None):
+        if target is None:
+            return
         ctx = Context()
-        print(module)
         lowerings.LowerListToTensor().apply(ctx, module)
+        if target == "tensor":
+            return
+        printf_to_llvm.PrintfToLLVM().apply(ctx, module)
 
-    Printer(print_generic_format=True).print_op(module)
+    lower_down_to(args.to)
+
+    Printer().print_op(module)
     print()
