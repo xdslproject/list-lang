@@ -1,12 +1,13 @@
 import io
 import re
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Generic, cast
 
 from typing_extensions import TypeVar
 from xdsl.builder import Builder
 from xdsl.dialects import arith, builtin, scf
-from xdsl.ir import Attribute, Block, SSAValue
+from xdsl.ir import Attribute, Block, Region, SSAValue
 from xdsl.printer import Printer
 from xdsl.rewriter import InsertPoint
 from xdsl.utils.scoped_dict import ScopedDict
@@ -32,6 +33,7 @@ LET = Punctuation(re.compile(r"let"), "'let'")
 EQUAL = Punctuation(re.compile(r"="), "equal")
 SEMICOLON = Punctuation(re.compile(r";"), "semicolon")
 SINGLE_PERIOD = Punctuation(re.compile(r"\.(?!\.)"), "period")
+COMMA = Punctuation(re.compile(r","), "comma")
 
 IF = Punctuation(re.compile(r"if"), "'if'")
 ELSE = Punctuation(re.compile(r"else"), "'else'")
@@ -41,6 +43,8 @@ FALSE = Punctuation(re.compile(r"false"), "'false'")
 STAR = Punctuation(re.compile(r"\*"), "star")
 PLUS = Punctuation(re.compile(r"\+"), "plus")
 RANGE = Punctuation(re.compile(r"\.\."), "range")
+PIPE = Punctuation(re.compile(r"\|"), "pipe")
+
 
 EQUAL_CMP = Punctuation(re.compile(r"=="), "equality comparator")
 LT_CMP = Punctuation(re.compile(r"<"), "less than comparator")
@@ -104,9 +108,12 @@ class ListLangBool(ListLangType):
         return XDSL_BOOL
 
 
+LIST_ELEMENT_TYPE = ListLangBool | ListLangInt
+
+
 @dataclass
 class ListLangList(ListLangType):
-    element_type: ListLangBool | ListLangInt
+    element_type: LIST_ELEMENT_TYPE
 
     def __str__(self) -> str:
         return f"list<{self.element_type}>"
@@ -118,6 +125,8 @@ class ListLangList(ListLangType):
         match method:
             case "len":
                 return ListLenMethod()
+            case "map":
+                return ListMapMethod()
             case _:
                 return None
 
@@ -233,6 +242,19 @@ def parse_integer(ctx: ParsingContext) -> Located[int]:
     return Located(lit.loc, lit.value)
 
 
+# TODO: Drop Python 3.11 support to use proper type parameters.
+# Linting is disabled for the time being.
+def parse_comma_separated(  # noqa: UP047
+    ctx: ParsingContext, p: Callable[[], Located[T | None]]
+) -> Sequence[Located[T]]:
+    result: list[Located[T]] = []
+    while (res := p()).value is not None:
+        result.append(Located(res.loc, res.value))
+        if not parse_opt_punct(ctx, COMMA).value:
+            break
+    return result
+
+
 ## Expressions
 
 
@@ -247,6 +269,15 @@ def _parse_opt_expr_atom(
         expr = parse_expr(ctx, builder)
         parse_punct(ctx, RPAREN)
         return Located(expr.loc, expr.value)
+
+    # Parse block expression.
+    if (block := parse_opt_block(ctx, builder)).value is not None:
+        if block.value.value is None:
+            raise ParseError(
+                block.value.loc.pos,
+                "expected final expression for block in expression position",
+            )
+        return Located(block.loc, block.value.value)
 
     # Parse if-expr.
     if if_expr := parse_opt_punct(ctx, IF):
@@ -369,10 +400,13 @@ def _parse_expr_atom(
 class Method:
     name: str
 
-    def get_lambda_arg_type(self) -> ListLangType | None:
+    def get_lambda_arg_type(
+        self, x: ListLangType
+    ) -> Sequence[ListLangType] | None:
         """
-        Returns the type of the argument of the method's lambda
-        if there is one, or None if there is no lambda.
+        From the type on which the method was invoked, returns the types of the
+        arguments of the method's lambda if there is one, or None if there is
+        no lambda.
         """
         ...
 
@@ -380,14 +414,15 @@ class Method:
         self,
         builder: Builder,
         x: Located[TypedExpression],
-        lambd: Located[Block] | None,
+        lambd: Located[tuple[Block, ListLangType]] | None,
     ) -> TypedExpression:
         """
         Builds the method's execution.
 
-        The lambda's content is provided in a free-standing block that must be
-        inlined as needed. The location of the block is the location of the
-        result expression of the lambda.
+        `lambd` contains a free-standing block containing the lambda
+        instructions that must be inlined as needed, and the type of the final
+        expression of the block. The associated location is the location of
+        the result expression.
         """
         ...
 
@@ -395,20 +430,54 @@ class Method:
 class ListLenMethod(Method):
     name = "len"
 
-    def get_lambda_arg_type(self) -> ListLangType | None:
+    def get_lambda_arg_type(
+        self, x: ListLangType
+    ) -> Sequence[ListLangType] | None:
         return None
 
     def build(
         self,
         builder: Builder,
         x: Located[TypedExpression],
-        lambd: Located[Block] | None,
+        lambd: Located[tuple[Block, ListLangType]] | None,
     ) -> TypedExpression:
         assert lambd is None
         assert isinstance(x.value.typ, ListLangList)
 
         len_op = builder.insert_op(list_dialect.LengthOp(x.value.value))
         return TypedExpression(len_op.result, ListLangInt())
+
+
+class ListMapMethod(Method):
+    name = "map"
+
+    def get_lambda_arg_type(
+        self, x: ListLangType
+    ) -> Sequence[ListLangType] | None:
+        assert isinstance(x, ListLangList)
+        return (x.element_type,)
+
+    def build(
+        self,
+        builder: Builder,
+        x: Located[TypedExpression],
+        lambd: Located[tuple[Block, ListLangType]] | None,
+    ) -> TypedExpression:
+        assert lambd is not None
+        assert isinstance(x.value.typ, ListLangList)
+
+        if not isinstance(lambd.value[1], LIST_ELEMENT_TYPE):
+            raise ParseError(
+                lambd.loc.pos, "expected expression of list-element type"
+            )
+
+        map_op = builder.insert_op(
+            list_dialect.MapOp(
+                x.value.value, Region([lambd.value[0]]), lambd.value[1].xdsl()
+            )
+        )
+
+        return TypedExpression(map_op.result, ListLangList(lambd.value[1]))
 
 
 def _parse_opt_expr_atom_with_methods(
@@ -428,12 +497,49 @@ def _parse_opt_expr_atom_with_methods(
                 f"unknown method '{method_name.value}' for type {x.value.typ}",
             )
 
-        if method.get_lambda_arg_type() is not None:
-            ...  # TODO: support methods with lambda parameter
+        lambda_info = None
+        if (args := method.get_lambda_arg_type(x.value.typ)) is not None:
+            first_pipe_loc = parse_punct(ctx, PIPE)
+            arg_idents = parse_comma_separated(
+                ctx, lambda: parse_opt_identifier(ctx)
+            )
+            parse_punct(ctx, PIPE)
+
+            if len(arg_idents) != len(args):
+                raise ParseError(
+                    first_pipe_loc.pos,
+                    f"expected {len(args)} arguments in {x.value.typ} method "
+                    f"'{method.name}' but got {len(arg_idents)}",
+                )
+
+            lambda_block = Block([], arg_types=[x.xdsl() for x in args])
+            ctx.bindings = ScopedDict(ctx.bindings)
+
+            for ident, typ, val in zip(arg_idents, args, lambda_block.args):
+                if ident.value in RESERVED_KEYWORDS:
+                    raise ParseError.from_loc(
+                        ident.loc, f"'{ident.value}' is a reserved keyword"
+                    )
+                val.name_hint = ident.value
+                ctx.bindings[ident.value] = Binding(val, typ)
+
+            lambda_builder = Builder(InsertPoint.at_start(lambda_block))
+            lambda_expr = parse_expr(ctx, lambda_builder)
+            lambda_builder.insert_op(
+                list_dialect.YieldOp(lambda_expr.value.value)
+            )
+
+            assert ctx.bindings.parent is not None
+            ctx.bindings = ctx.bindings.parent
+
+            lambda_info = Located(
+                lambda_expr.loc, (lambda_block, lambda_expr.value.typ)
+            )
 
         parse_punct(ctx, RPAREN)
 
-        x = Located(x.loc, method.build(builder, x, None))
+        x = Located(x.loc, method.build(builder, x, lambda_info))
+        x.value.value.name_hint = method.name
 
     return cast(Located[TypedExpression | None], x)
 
@@ -786,26 +892,46 @@ def parse_block_content(
     return Located(start_loc, parse_opt_expr(ctx, builder))
 
 
-def parse_block(
-    ctx: ParsingContext, builder: Builder
-) -> Located[Located[TypedExpression | None]]:
+def parse_opt_block(
+    ctx: ParsingContext,
+    builder: Builder,
+) -> Located[Located[TypedExpression | None] | None]:
     """
     Parses a block and returns its trailing expression, if there is one. The
-    first location is the start of the block content, while the second location
+    first location is the start of the block, while the second location
     is the start of where the trailing expression is or would be.
 
     The scope of bindings within the block is contained, meaning a new scope
     level is added to the binding dictionary when parsing the block.
     """
 
+    if not (lcurl := parse_opt_punct(ctx, LCURL)).value:
+        return Located(lcurl.loc, None)
     ctx.bindings = ScopedDict(ctx.bindings)
-    parse_punct(ctx, LCURL)
     res = parse_block_content(ctx, builder)
     parse_punct(ctx, RCURL)
     assert ctx.bindings.parent is not None
     ctx.bindings = ctx.bindings.parent
 
-    return res
+    return Located(lcurl.loc, res.value)
+
+
+def parse_block(
+    ctx: ParsingContext,
+    builder: Builder,
+) -> Located[Located[TypedExpression | None]]:
+    """
+    Parses a block and returns its trailing expression, if there is one. The
+    first location is the start of the block, while the second location
+    is the start of where the trailing expression is or would be.
+
+    The scope of bindings within the block is contained, meaning a new scope
+    level is added to the binding dictionary when parsing the block.
+    """
+
+    if (block := parse_opt_block(ctx, builder)).value is None:
+        raise ParseError(block.loc.pos, "expected block")
+    return Located(block.loc, block.value)
 
 
 ## Program
