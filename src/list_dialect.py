@@ -1,4 +1,4 @@
-from typing import Self, cast
+from typing import cast
 
 from xdsl.dialects import builtin
 from xdsl.ir import (
@@ -77,7 +77,7 @@ class MapOp(IRDLOperation):
         printer.print_op_attributes(self.attributes)
 
     @classmethod
-    def parse(cls, parser: Parser) -> Self:
+    def parse(cls, parser: Parser) -> "MapOp":
         unresolved_li = parser.parse_unresolved_operand("Expected list operand")
         parser.parse_keyword("with")
         parser.parse_punctuation("(")
