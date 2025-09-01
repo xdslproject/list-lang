@@ -1,7 +1,7 @@
 from xdsl.builder import Builder
 from xdsl.context import Context
-from xdsl.dialects import arith, builtin, printf, scf, tensor
-from xdsl.ir import Attribute, Block
+from xdsl.dialects import arith, builtin, func, printf, scf, tensor
+from xdsl.ir import Attribute, Block, Region
 from xdsl.passes import ModulePass
 from xdsl.pattern_rewriter import (
     GreedyRewritePatternApplier,
@@ -85,7 +85,7 @@ class LowerMapOp(RewritePattern):
         rewriter.insertion_point = InsertPoint.at_start(for_body)
 
         x = rewriter.insert_op(
-            tensor.ExtractOp(tensor_arg, [ind_var], tensor_type.element_type)
+            tensor.ExtractOp(op.li, [ind_var], tensor_type.element_type)
         )
         x.result.name_hint = op.body.block.args[0].name_hint
 
@@ -239,3 +239,19 @@ class LowerListToTensor(ModulePass):
                 ]
             ),
         ).rewrite_module(op)
+
+
+class WrapModuleInFunc(ModulePass):
+    """
+    Wraps the free-standing ops in a module into a func.func function.
+    """
+
+    name = "wrap-module-in-func"
+
+    def apply(self, ctx: Context, op: builtin.ModuleOp) -> None:
+        old_module_region = op.detach_region(0)
+        new_module_region = Region(
+            [Block([func.FuncOp("main", ((), ()), old_module_region)])]
+        )
+        old_module_region.block.add_op(func.ReturnOp())
+        op.add_region(new_module_region)

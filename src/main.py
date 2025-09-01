@@ -796,7 +796,7 @@ if __name__ == "__main__":
     )
 
     arg_parser.add_argument(
-        "--to", choices=["tensor", "mlir"], help="conversion target"
+        "--to", choices=["tensor", "interp", "mlir"], help="conversion target"
     )
 
     args = arg_parser.parse_args()
@@ -810,7 +810,12 @@ if __name__ == "__main__":
         lowerings.LowerListToTensor().apply(ctx, module)
         if target == "tensor":
             return
+        lowerings.WrapModuleInFunc().apply(ctx, module)
+        if target == "interp":
+            return
         printf_to_llvm.PrintfToLLVM().apply(ctx, module)
+        if target == "mlir":
+            return
 
     lower_down_to(args.to)
 

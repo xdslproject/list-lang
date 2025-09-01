@@ -1,4 +1,6 @@
 // RUN: cat %s | python %lsl-parser | filecheck %s
+// RUN: cat %s | python %lsl-parser --to=tensor | filecheck %s
+// RUN: cat %s | python %lsl-parser --to=interp | xdsl-run | filecheck %s --check-prefix INTERP
 
 let y = 1 == 2;
 let x = 1 + 2 + 3;
@@ -6,6 +8,8 @@ let z = if y { 0 } else { 1 };
 let w = x + z * (2 * z * 3);
 
 1 + 2 + 3 + 4 * 5
+
+// INTERP: 26
 
 // CHECK:       builtin.module {
 // CHECK-NEXT:    %{{.*}} = arith.constant 1 : i32

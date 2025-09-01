@@ -1,4 +1,6 @@
 // RUN: cat %s | python %lsl-parser | filecheck %s
+// RUN: cat %s | python %lsl-parser --to=tensor | filecheck %s
+// RUN: cat %s | python %lsl-parser --to=interp | xdsl-run | filecheck %s --check-prefix INTERP
 
 let x = 4;
 let y = 3;
@@ -15,6 +17,8 @@ let w = if x * z == 0 {
     if true { tmp * z } else { { { { block_exp } } } }
 } * 2;
 w + 3
+
+// INTERP: 195
 
 // CHECK:       builtin.module {
 // CHECK-NEXT:    %{{.*}} = arith.constant 4 : i32
