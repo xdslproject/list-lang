@@ -242,7 +242,9 @@ def parse_integer(ctx: ParsingContext) -> Located[int]:
     return Located(lit.loc, lit.value)
 
 
-def parse_comma_separated[T](
+# TODO: Drop Python 3.11 support to use proper type parameters.
+# Linting is disabled for the time being.
+def parse_comma_separated(  # noqa: UP047
     ctx: ParsingContext, p: Callable[[], Located[T | None]]
 ) -> Sequence[Located[T]]:
     result: list[Located[T]] = []
