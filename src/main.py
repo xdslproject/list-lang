@@ -6,7 +6,7 @@ from typing import Generic, cast
 
 from typing_extensions import TypeVar
 from xdsl.builder import Builder
-from xdsl.dialects import arith, builtin, scf
+from xdsl.dialects import arith, builtin, printf, scf
 from xdsl.ir import Attribute, Block, Region, SSAValue
 from xdsl.printer import Printer
 from xdsl.rewriter import InsertPoint
@@ -86,6 +86,7 @@ class Located(Generic[T]):  # noqa: UP046
 class ListLangType:
     def __str__(self) -> str: ...
     def xdsl(self) -> Attribute: ...
+    def print(self, builder: Builder, value: SSAValue): ...
     def get_method(self, method: str) -> "Method | None":
         return None
 
@@ -98,6 +99,9 @@ class ListLangInt(ListLangType):
     def xdsl(self) -> builtin.IntegerType:
         return XDSL_INT
 
+    def print(self, builder: Builder, value: SSAValue):
+        builder.insert_op(printf.PrintFormatOp("{}", value))
+
 
 @dataclass
 class ListLangBool(ListLangType):
@@ -106,6 +110,16 @@ class ListLangBool(ListLangType):
 
     def xdsl(self) -> builtin.IntegerType:
         return XDSL_BOOL
+
+    def print(self, builder: Builder, value: SSAValue):
+        builder.insert_op(
+            scf.IfOp(
+                value,
+                [],
+                Region(Block([printf.PrintFormatOp("true")])),
+                Region(Block([printf.PrintFormatOp("false")])),
+            )
+        )
 
 
 LIST_ELEMENT_TYPE = ListLangBool | ListLangInt
@@ -120,6 +134,9 @@ class ListLangList(ListLangType):
 
     def xdsl(self) -> list_dialect.ListType:
         return list_dialect.ListType(self.element_type.xdsl())
+
+    def print(self, builder: Builder, value: SSAValue):
+        builder.insert_op(list_dialect.PrintOp(value))
 
     def get_method(self, method: str) -> "Method | None":
         match method:
@@ -937,16 +954,16 @@ def parse_block(
 ## Program
 
 
-def parse_program(
-    code: str, builder: Builder
-) -> Located[TypedExpression | None]:
+def parse_program(code: str, builder: Builder):
     """
     Parses a program.
-    If the program has a result expression, returns it. The location of the
-    return value is where the type expression is or would be.
+    Builds the operations associated with the program, and prints the
+    final expression.
     """
-
-    return parse_block_content(ParsingContext(code), builder).value
+    expr = parse_block_content(ParsingContext(code), builder).value.value
+    if expr is None:
+        return
+    expr.typ.print(builder, expr.value)
 
 
 def program_to_mlir(code: str) -> str:

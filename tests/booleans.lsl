@@ -36,4 +36,9 @@ z1 || !z2 && x + 1 > 5
 // CHECK-NEXT:    %{{.*}} = arith.constant 5 : i32
 // CHECK-NEXT:    %{{.*}} = arith.cmpi ugt, %{{.*}}, %{{.*}} : i32
 // CHECK-NEXT:    %{{.*}} = arith.andi %{{.*}}, %{{.*}} : i1
+// CHECK-NEXT:    scf.if %{{.*}} {
+// CHECK-NEXT:      printf.print_format "true"
+// CHECK-NEXT:    } else {
+// CHECK-NEXT:      printf.print_format "false"
+// CHECK-NEXT:    }
 // CHECK-NEXT:  }

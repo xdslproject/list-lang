@@ -124,6 +124,20 @@ class MapOp(IRDLOperation):
 
 
 @irdl_op_definition
+class PrintOp(IRDLOperation):
+    name = "list.print"
+
+    printed = operand_def(ListType)
+
+    def __init__(self, printed: SSAValue):
+        super().__init__(
+            operands=[printed],
+        )
+
+    assembly_format = "$printed attr-dict `:` type($printed)"
+
+
+@irdl_op_definition
 class RangeOp(IRDLOperation):
     name = "list.range"
 
@@ -154,4 +168,6 @@ class YieldOp(IRDLOperation):
     assembly_format = "$yielded attr-dict `:` type($yielded)"
 
 
-LIST_DIALECT = Dialect("list", [LengthOp, MapOp, RangeOp, YieldOp], [ListType])
+LIST_DIALECT = Dialect(
+    "list", [LengthOp, MapOp, PrintOp, RangeOp, YieldOp], [ListType]
+)

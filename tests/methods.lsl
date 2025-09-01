@@ -45,4 +45,9 @@ y == y2
 // CHECK-NEXT:    %{{.*}} = list.range %{{.*}} to %{{.*}} : !list.list<i32>
 // CHECK-NEXT:    %{{.*}} = list.length %{{.*}} : !list.list<i32> -> i32
 // CHECK-NEXT:    %{{.*}} = arith.cmpi eq, %{{.*}}, %{{.*}} : i32
+// CHECK-NEXT:    scf.if %{{.*}} {
+// CHECK-NEXT:      printf.print_format "true"
+// CHECK-NEXT:    } else {
+// CHECK-NEXT:      printf.print_format "false"
+// CHECK-NEXT:    }
 // CHECK-NEXT:  }
