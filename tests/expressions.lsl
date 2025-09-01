@@ -38,4 +38,5 @@ let w = x + z * (2 * z * 3);
 // CHECK-NEXT:    %{{.*}} = arith.constant 5 : i32
 // CHECK-NEXT:    %{{.*}} = arith.muli %{{.*}}, %{{.*}} : i32
 // CHECK-NEXT:    %{{.*}} = arith.addi %{{.*}}, %{{.*}} : i32
+// CHECK-NEXT:    printf.print_format "{}", %{{.*}} : i32
 // CHECK-NEXT:  }

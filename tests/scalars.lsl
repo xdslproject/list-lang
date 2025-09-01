@@ -53,4 +53,5 @@ w + 3
 // CHECK-NEXT:    %{{.*}} = arith.muli %{{.*}}, %{{.*}} : i32
 // CHECK-NEXT:    %{{.*}} = arith.constant 3 : i32
 // CHECK-NEXT:    %{{.*}} = arith.addi %{{.*}}, %{{.*}} : i32
+// CHECK-NEXT:    printf.print_format "{}", %{{.*}} : i32
 // CHECK-NEXT:  }

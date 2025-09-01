@@ -13,4 +13,5 @@ x
 // CHECK-NEXT:    %{{.*}} = arith.addi %{{.*}}, %{{.*}} : i32
 // CHECK-NEXT:    %{{.*}} = arith.constant 15 : i32
 // CHECK-NEXT:    %{{.*}} = list.range %{{.*}} to %{{.*}} : !list.list<i32>
+// CHECK-NEXT:    list.print %{{.*}} : !list.list<i32>
 // CHECK-NEXT:  }
