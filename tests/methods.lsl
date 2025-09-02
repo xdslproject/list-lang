@@ -1,4 +1,5 @@
 // RUN: cat %s | python %lsl-parser | filecheck %s
+// RUN: cat %s | python %lsl-parser --to=tensor | filecheck %s --check-prefix TENSOR
 
 let a = 12;
 let x = 0..10;
@@ -51,3 +52,84 @@ y == y2
 // CHECK-NEXT:      printf.print_format "false"
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
+
+// TENSOR:       builtin.module {
+// TENSOR-NEXT:    %{{.*}} = arith.constant 12 : i32
+// TENSOR-NEXT:    %{{.*}} = arith.constant 0 : i32
+// TENSOR-NEXT:    %{{.*}} = arith.constant 10 : i32
+// TENSOR-NEXT:    %{{.*}} = arith.constant 0 : index
+// TENSOR-NEXT:    %{{.*}} = arith.constant 1 : index
+// TENSOR-NEXT:    %{{.*}} = arith.subi %{{.*}}, %{{.*}} : i32
+// TENSOR-NEXT:    %{{.*}} = arith.index_cast %{{.*}} : i32 to index
+// TENSOR-NEXT:    %{{.*}} = tensor.empty(%{{.*}}) : tensor<?xi32>
+// TENSOR-NEXT:    %{{.*}} = scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%{{.*}} = %{{.*}}) -> (tensor<?xi32>) {
+// TENSOR-NEXT:      %{{.*}} = arith.index_cast %{{.*}} : index to i32
+// TENSOR-NEXT:      %{{.*}} = arith.addi %{{.*}}, %{{.*}} : i32
+// TENSOR-NEXT:      %{{.*}} = tensor.insert %{{.*}} into %{{.*}}[%{{.*}}] : tensor<?xi32>
+// TENSOR-NEXT:      scf.yield %{{.*}} : tensor<?xi32>
+// TENSOR-NEXT:    }
+// TENSOR-NEXT:    %{{.*}} = arith.constant 0 : index
+// TENSOR-NEXT:    %{{.*}} = arith.constant 1 : index
+// TENSOR-NEXT:    %{{.*}} = tensor.dim %{{.*}}, %{{.*}} : tensor<?xi32>
+// TENSOR-NEXT:    %{{.*}} = tensor.empty(%{{.*}}) : tensor<?xi1>
+// TENSOR-NEXT:    %{{.*}} = scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%{{.*}} = %{{.*}}) -> (tensor<?xi1>) {
+// TENSOR-NEXT:      %{{.*}} = tensor.extract %{{.*}}[%{{.*}}] : tensor<?xi32>
+// TENSOR-NEXT:      %{{.*}} = arith.constant 2 : i32
+// TENSOR-NEXT:      %{{.*}} = arith.cmpi ult, %{{.*}}, %{{.*}} : i32
+// TENSOR-NEXT:      %{{.*}} = tensor.insert %{{.*}} into %{{.*}}[%{{.*}}] : tensor<?xi1>
+// TENSOR-NEXT:      scf.yield %{{.*}} : tensor<?xi1>
+// TENSOR-NEXT:    }
+// TENSOR-NEXT:    %{{.*}} = arith.constant 0 : index
+// TENSOR-NEXT:    %{{.*}} = arith.constant 1 : index
+// TENSOR-NEXT:    %{{.*}} = tensor.dim %{{.*}}, %{{.*}} : tensor<?xi32>
+// TENSOR-NEXT:    %{{.*}} = tensor.empty(%{{.*}}) : tensor<?xi32>
+// TENSOR-NEXT:    %{{.*}} = scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%{{.*}} = %{{.*}}) -> (tensor<?xi32>) {
+// TENSOR-NEXT:      %{{.*}} = tensor.extract %{{.*}}[%{{.*}}] : tensor<?xi32>
+// TENSOR-NEXT:      %{{.*}} = arith.muli %{{.*}}, %{{.*}} : i32
+// TENSOR-NEXT:      %{{.*}} = arith.constant 0 : index
+// TENSOR-NEXT:      %{{.*}} = tensor.dim %{{.*}}, %{{.*}} : i32
+// TENSOR-NEXT:      %{{.*}} = arith.index_cast %{{.*}} : index to i32
+// TENSOR-NEXT:      %{{.*}} = arith.addi %{{.*}}, %{{.*}} : i32
+// TENSOR-NEXT:      %{{.*}} = tensor.insert %{{.*}} into %{{.*}}[%{{.*}}] : tensor<?xi32>
+// TENSOR-NEXT:      scf.yield %{{.*}} : tensor<?xi32>
+// TENSOR-NEXT:    }
+// TENSOR-NEXT:    %{{.*}} = arith.constant 0 : index
+// TENSOR-NEXT:    %{{.*}} = arith.constant 1 : index
+// TENSOR-NEXT:    %{{.*}} = tensor.dim %{{.*}}, %{{.*}} : tensor<?xi32>
+// TENSOR-NEXT:    %{{.*}} = tensor.empty(%{{.*}}) : tensor<?xi32>
+// TENSOR-NEXT:    %{{.*}} = scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%{{.*}} = %{{.*}}) -> (tensor<?xi32>) {
+// TENSOR-NEXT:      %{{.*}} = tensor.extract %{{.*}}[%{{.*}}] : tensor<?xi32>
+// TENSOR-NEXT:      %{{.*}} = arith.muli %{{.*}}, %{{.*}} : i32
+// TENSOR-NEXT:      %{{.*}} = arith.constant 0 : index
+// TENSOR-NEXT:      %{{.*}} = tensor.dim %{{.*}}, %{{.*}} : i32
+// TENSOR-NEXT:      %{{.*}} = arith.index_cast %{{.*}} : index to i32
+// TENSOR-NEXT:      %{{.*}} = arith.addi %{{.*}}, %{{.*}} : i32
+// TENSOR-NEXT:      %{{.*}} = tensor.insert %{{.*}} into %{{.*}}[%{{.*}}] : tensor<?xi32>
+// TENSOR-NEXT:      scf.yield %{{.*}} : tensor<?xi32>
+// TENSOR-NEXT:    }
+// TENSOR-NEXT:    %{{.*}} = arith.constant 0 : index
+// TENSOR-NEXT:    %{{.*}} = tensor.dim %{{.*}}, %{{.*}} : i32
+// TENSOR-NEXT:    %{{.*}} = arith.index_cast %{{.*}} : index to i32
+// TENSOR-NEXT:    %{{.*}} = arith.constant 10 : i32
+// TENSOR-NEXT:    %{{.*}} = arith.constant 20 : i32
+// TENSOR-NEXT:    %{{.*}} = arith.constant 0 : index
+// TENSOR-NEXT:    %{{.*}} = arith.constant 1 : index
+// TENSOR-NEXT:    %{{.*}} = arith.subi %{{.*}}, %{{.*}} : i32
+// TENSOR-NEXT:    %{{.*}} = arith.index_cast %{{.*}} : i32 to index
+// TENSOR-NEXT:    %{{.*}} = tensor.empty(%{{.*}}) : tensor<?xi32>
+// TENSOR-NEXT:    %{{.*}} = scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%{{.*}} = %{{.*}}) -> (tensor<?xi32>) {
+// TENSOR-NEXT:      %{{.*}} = arith.index_cast %{{.*}} : index to i32
+// TENSOR-NEXT:      %{{.*}} = arith.addi %{{.*}}, %{{.*}} : i32
+// TENSOR-NEXT:      %{{.*}} = tensor.insert %{{.*}} into %{{.*}}[%{{.*}}] : tensor<?xi32>
+// TENSOR-NEXT:      scf.yield %{{.*}} : tensor<?xi32>
+// TENSOR-NEXT:    }
+// TENSOR-NEXT:    %{{.*}} = arith.constant 0 : index
+// TENSOR-NEXT:    %{{.*}} = tensor.dim %{{.*}}, %{{.*}} : i32
+// TENSOR-NEXT:    %{{.*}} = arith.index_cast %{{.*}} : index to i32
+// TENSOR-NEXT:    %{{.*}} = arith.cmpi eq, %{{.*}}, %{{.*}} : i32
+// TENSOR-NEXT:    scf.if %{{.*}} {
+// TENSOR-NEXT:      printf.print_format "true"
+// TENSOR-NEXT:    } else {
+// TENSOR-NEXT:      printf.print_format "false"
+// TENSOR-NEXT:    }
+// TENSOR-NEXT:  }

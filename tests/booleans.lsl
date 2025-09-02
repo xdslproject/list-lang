@@ -1,4 +1,5 @@
 // RUN: cat %s | python %lsl-parser | filecheck %s
+// RUN: cat %s | python %lsl-parser --to=tensor | filecheck %s
 
 let x = 3;
 let y0 = 1 == 2;
