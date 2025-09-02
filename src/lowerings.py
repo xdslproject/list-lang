@@ -1,4 +1,3 @@
-from xdsl.builder import Builder
 from xdsl.context import Context
 from xdsl.dialects import arith, builtin, func, printf, scf, tensor
 from xdsl.ir import Attribute, Block, Region
@@ -36,17 +35,13 @@ class LowerLengthOp(RewritePattern):
     def match_and_rewrite(
         self, op: list_dialect.LengthOp, rewriter: PatternRewriter
     ):
-        replacement = (
-            (
-                zero_index := arith.ConstantOp(
-                    builtin.IntegerAttr(0, builtin.IndexType())
-                )
-            ),
-            (dim := tensor.DimOp(op.result, zero_index)),
-            arith.IndexCastOp(dim, builtin.i32),
+        zero_index = rewriter.insert_op(
+            arith.ConstantOp(builtin.IntegerAttr(0, builtin.IndexType()))
         )
-        replacement[-1].result.name_hint = op.result.name_hint
-        rewriter.replace_matched_op(replacement)
+        dim = rewriter.insert_op(tensor.DimOp(op.result, zero_index))
+        cast = arith.IndexCastOp(dim, builtin.i32)
+        cast.result.name_hint = op.result.name_hint
+        rewriter.replace_matched_op(cast)
 
 
 class LowerMapOp(RewritePattern):
@@ -132,19 +127,24 @@ class LowerPrintOp(RewritePattern):
 
         tensor_type = _list_type_to_tensor(op.li.type)
 
+        rewriter_ip = rewriter.insertion_point
+
         for_body = Block([], arg_types=[builtin.IndexType()])
         ind_var = for_body.args[0]
         ind_var.name_hint = "i"
 
-        body_builder = Builder(InsertPoint.at_start(for_body))
-        scalar = body_builder.insert_op(
+        rewriter.insertion_point = InsertPoint.at_start(for_body)
+
+        scalar = rewriter.insert_op(
             tensor.ExtractOp(op.li, [ind_var], tensor_type.element_type)
         )
         ListLangType.from_xdsl(scalar.result.type).print(
-            body_builder, scalar.result
+            rewriter, scalar.result
         )
-        body_builder.insert_op(printf.PrintFormatOp(","))
-        body_builder.insert_op(scf.YieldOp())
+        rewriter.insert_op(printf.PrintFormatOp(","))
+        rewriter.insert_op(scf.YieldOp())
+
+        rewriter.insertion_point = rewriter_ip
 
         rewriter.replace_matched_op(
             (
@@ -189,6 +189,8 @@ class LowerRangeOp(RewritePattern):
             op.result.name_hint, "uninit"
         )
 
+        rewriter_ip = rewriter.insertion_point
+
         for_body = Block(
             [],
             arg_types=(builtin.IndexType(), tensor_type),
@@ -197,18 +199,19 @@ class LowerRangeOp(RewritePattern):
         ind_var.name_hint = "i"
         tensor_arg = for_body.args[1]
 
-        body_builder = Builder(InsertPoint.at_start(for_body))
-        ind_var_32 = body_builder.insert_op(
-            arith.IndexCastOp(ind_var, builtin.i32)
-        )
-        offseted = body_builder.insert_op(arith.AddiOp(op.lower, ind_var_32))
-        modified = body_builder.insert_op(
+        rewriter.insertion_point = InsertPoint.at_start(for_body)
+
+        ind_var_32 = rewriter.insert_op(arith.IndexCastOp(ind_var, builtin.i32))
+        offseted = rewriter.insert_op(arith.AddiOp(op.lower, ind_var_32))
+        modified = rewriter.insert_op(
             tensor.InsertOp(offseted.result, tensor_arg, [ind_var])
         )
         modified.result.name_hint = _name_hint_ext(
             op.result.name_hint, "modified"
         )
-        body_builder.insert_op(scf.YieldOp(modified))
+        rewriter.insert_op(scf.YieldOp(modified))
+
+        rewriter.insertion_point = rewriter_ip
 
         for_op = scf.ForOp(
             zero,
