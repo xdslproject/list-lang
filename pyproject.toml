@@ -33,7 +33,6 @@ profile = "black"
 lint.select = ["E", "F", "W", "I", "UP", "PT", "TID251"]
 lint.ignore = ["PT015"]
 line-length = 80
-target-version = "py312"
 exclude = ["lit.cfg.py"]
 
 [tool.ruff.lint.mccabe]
