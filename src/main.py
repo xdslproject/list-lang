@@ -10,7 +10,6 @@ from xdsl.dialects import arith, builtin, scf
 from xdsl.ir import Block, SSAValue
 from xdsl.printer import Printer
 from xdsl.rewriter import InsertPoint
-from xdsl.utils.scoped_dict import ScopedDict
 
 import list_dialect
 import lowerings
@@ -21,6 +20,7 @@ from lang_types import (
     ListLangType,
     TypedExpression,
 )
+from scoped_dict_shadow import ScopedDict
 from source import CodeCursor, Located, Location, ParseError
 
 RESERVED_KEYWORDS = ["let", "if", "else", "true", "false"]
