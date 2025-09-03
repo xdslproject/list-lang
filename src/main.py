@@ -20,7 +20,7 @@ from lang_types import (
     ListLangType,
     TypedExpression,
 )
-from scoped_dict_better import ScopedDict
+from scoped_dict_shadow import ScopedDict
 from source import CodeCursor, Located, Location, ParseError
 
 RESERVED_KEYWORDS = ["let", "if", "else", "true", "false"]
