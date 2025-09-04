@@ -87,7 +87,7 @@ y == y2
 // TENSOR-NEXT:      %{{.*}} = tensor.extract %{{.*}}[%{{.*}}] : tensor<?xi32>
 // TENSOR-NEXT:      %{{.*}} = arith.muli %{{.*}}, %{{.*}} : i32
 // TENSOR-NEXT:      %{{.*}} = arith.constant 0 : index
-// TENSOR-NEXT:      %{{.*}} = tensor.dim %{{.*}}, %{{.*}} : i32
+// TENSOR-NEXT:      %{{.*}} = tensor.dim %{{.*}}, %{{.*}} : tensor<?xi32>
 // TENSOR-NEXT:      %{{.*}} = arith.index_cast %{{.*}} : index to i32
 // TENSOR-NEXT:      %{{.*}} = arith.addi %{{.*}}, %{{.*}} : i32
 // TENSOR-NEXT:      %{{.*}} = tensor.insert %{{.*}} into %{{.*}}[%{{.*}}] : tensor<?xi32>
@@ -101,14 +101,14 @@ y == y2
 // TENSOR-NEXT:      %{{.*}} = tensor.extract %{{.*}}[%{{.*}}] : tensor<?xi32>
 // TENSOR-NEXT:      %{{.*}} = arith.muli %{{.*}}, %{{.*}} : i32
 // TENSOR-NEXT:      %{{.*}} = arith.constant 0 : index
-// TENSOR-NEXT:      %{{.*}} = tensor.dim %{{.*}}, %{{.*}} : i32
+// TENSOR-NEXT:      %{{.*}} = tensor.dim %{{.*}}, %{{.*}} : tensor<?xi32>
 // TENSOR-NEXT:      %{{.*}} = arith.index_cast %{{.*}} : index to i32
 // TENSOR-NEXT:      %{{.*}} = arith.addi %{{.*}}, %{{.*}} : i32
 // TENSOR-NEXT:      %{{.*}} = tensor.insert %{{.*}} into %{{.*}}[%{{.*}}] : tensor<?xi32>
 // TENSOR-NEXT:      scf.yield %{{.*}} : tensor<?xi32>
 // TENSOR-NEXT:    }
 // TENSOR-NEXT:    %{{.*}} = arith.constant 0 : index
-// TENSOR-NEXT:    %{{.*}} = tensor.dim %{{.*}}, %{{.*}} : i32
+// TENSOR-NEXT:    %{{.*}} = tensor.dim %{{.*}}, %{{.*}} : tensor<?xi32>
 // TENSOR-NEXT:    %{{.*}} = arith.index_cast %{{.*}} : index to i32
 // TENSOR-NEXT:    %{{.*}} = arith.constant 10 : i32
 // TENSOR-NEXT:    %{{.*}} = arith.constant 20 : i32
@@ -124,7 +124,7 @@ y == y2
 // TENSOR-NEXT:      scf.yield %{{.*}} : tensor<?xi32>
 // TENSOR-NEXT:    }
 // TENSOR-NEXT:    %{{.*}} = arith.constant 0 : index
-// TENSOR-NEXT:    %{{.*}} = tensor.dim %{{.*}}, %{{.*}} : i32
+// TENSOR-NEXT:    %{{.*}} = tensor.dim %{{.*}}, %{{.*}} : tensor<?xi32>
 // TENSOR-NEXT:    %{{.*}} = arith.index_cast %{{.*}} : index to i32
 // TENSOR-NEXT:    %{{.*}} = arith.cmpi eq, %{{.*}}, %{{.*}} : i32
 // TENSOR-NEXT:    scf.if %{{.*}} {
