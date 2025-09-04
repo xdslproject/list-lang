@@ -3,7 +3,9 @@
 
 let x = 0..10;
 let y = 10 + 1..15;
-x
+y
+
+// INTERP: [11,12,13,14,]
 
 // CHECK:       builtin.module {
 // CHECK-NEXT:    %{{.*}} = arith.constant 0 : i32
