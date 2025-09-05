@@ -19,6 +19,8 @@ from lang_types import ListLangType
 def _name_hint_ext(name_hint: str | None, extension: str) -> str | None:
     if name_hint is None:
         return None
+    if name_hint[0] != "_":
+        name_hint = "_" + name_hint
     return f"{name_hint}_{extension}"
 
 
@@ -74,7 +76,7 @@ class LowerMapOp(RewritePattern):
             arg_types=(builtin.IndexType(), result_tensor_type),
         )
         ind_var = for_body.args[0]
-        ind_var.name_hint = "i"
+        ind_var.name_hint = "_i"
         tensor_arg = for_body.args[1]
 
         rewriter.insertion_point = InsertPoint.at_start(for_body)
@@ -131,7 +133,7 @@ class LowerPrintOp(RewritePattern):
 
         for_body = Block([], arg_types=[builtin.IndexType()])
         ind_var = for_body.args[0]
-        ind_var.name_hint = "i"
+        ind_var.name_hint = "_i"
 
         rewriter.insertion_point = InsertPoint.at_start(for_body)
 
@@ -196,7 +198,7 @@ class LowerRangeOp(RewritePattern):
             arg_types=(builtin.IndexType(), tensor_type),
         )
         ind_var = for_body.args[0]
-        ind_var.name_hint = "i"
+        ind_var.name_hint = "_i"
         tensor_arg = for_body.args[1]
 
         rewriter.insertion_point = InsertPoint.at_start(for_body)
