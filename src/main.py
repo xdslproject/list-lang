@@ -131,6 +131,28 @@ def parse_integer(ctx: ParsingContext) -> Located[int]:
     return Located(lit.loc, lit.value)
 
 
+def name_hint_without_prefix(value: SSAValue) -> str:
+    """
+    Get the name hint of a value, removing a possible underscore prefix if needed.
+    """
+    name = value.name_hint
+    assert name is not None
+    if name.startswith("_"):
+        return name[1:]
+    return name
+
+
+def compose_name_hints(*names: SSAValue | str) -> str:
+    """
+    Create a new name hint by composing multiple strings and name hints.
+    The new name hint starts with an underscore, as it is a temporary.
+    """
+    return "_" + "_".join(
+        name if isinstance(name, str) else name_hint_without_prefix(name)
+        for name in names
+    )
+
+
 T = TypeVar("T")
 
 
@@ -220,7 +242,7 @@ def _parse_opt_expr_atom(
             )
         )
 
-        if_op.results[0].name_hint = "if_result"
+        if_op.results[0].name_hint = "_if_result"
         return Located(
             if_expr.loc,
             TypedExpression(if_op.results[0], then_block_expr.value.value.typ),
@@ -233,7 +255,7 @@ def _parse_opt_expr_atom(
                 builtin.IntegerAttr(lit.value, ListLangInt().xdsl())
             )
         )
-        val.result.name_hint = f"c{lit.value}"
+        val.result.name_hint = f"_c{lit.value}"
         return Located(lit.loc, TypedExpression(val.result, ListLangInt()))
 
     # Parse false constant.
@@ -241,7 +263,7 @@ def _parse_opt_expr_atom(
         val = builder.insert_op(
             arith.ConstantOp(builtin.IntegerAttr(0, ListLangBool().xdsl()))
         )
-        val.result.name_hint = "false"
+        val.result.name_hint = "_false"
         return Located(false.loc, TypedExpression(val.result, ListLangBool()))
 
     # Parse true constant.
@@ -249,7 +271,7 @@ def _parse_opt_expr_atom(
         val = builder.insert_op(
             arith.ConstantOp(builtin.IntegerAttr(1, ListLangBool().xdsl()))
         )
-        val.result.name_hint = "true"
+        val.result.name_hint = "_true"
         return Located(true.loc, TypedExpression(val.result, ListLangBool()))
 
     # Parse boolean negation.
@@ -267,7 +289,9 @@ def _parse_opt_expr_atom(
         negated = builder.insert_op(
             arith.XOrIOp(to_negate.value.value, true.result)
         )
-        negated.result.name_hint = f"not_{to_negate.value.value.name_hint}"
+        negated.result.name_hint = compose_name_hints(
+            "not", to_negate.value.value
+        )
         return Located(neg.loc, TypedExpression(negated.result, ListLangBool()))
 
     # Parse binding.
@@ -331,6 +355,11 @@ def _parse_opt_expr_atom_with_methods(
                     raise ParseError.from_loc(
                         ident.loc, f"'{ident.value}' is a reserved keyword"
                     )
+                if ident.value[0] == "_":
+                    raise ParseError.from_loc(
+                        ident.loc,
+                        "variable names cannot start with an underscore",
+                    )
                 val.name_hint = ident.value
                 ctx.bindings[ident.value] = Binding(val, typ)
 
@@ -350,7 +379,7 @@ def _parse_opt_expr_atom_with_methods(
         parse_punct(ctx, RPAREN)
 
         x = Located(x.loc, method.build(builder, x, lambda_info))
-        x.value.value.name_hint = method.name
+        x.value.value.name_hint = "_" + method.name
 
     return cast(Located[TypedExpression | None], x)
 
@@ -400,8 +429,8 @@ class Multiplication(BinaryOp):
         mul_op = builder.insert_op(
             arith.MuliOp(lhs.value.value, rhs.value.value)
         )
-        mul_op.result.name_hint = (
-            f"{lhs.value.value.name_hint}_times_{rhs.value.value.name_hint}"
+        mul_op.result.name_hint = compose_name_hints(
+            lhs.value.value, "times", rhs.value.value
         )
         return TypedExpression(mul_op.result, lhs.value.typ)
 
@@ -433,8 +462,8 @@ class Addition(BinaryOp):
         add_op = builder.insert_op(
             arith.AddiOp(lhs.value.value, rhs.value.value)
         )
-        add_op.result.name_hint = (
-            f"{lhs.value.value.name_hint}_plus_{rhs.value.value.name_hint}"
+        add_op.result.name_hint = compose_name_hints(
+            lhs.value.value, "plus", rhs.value.value
         )
         return TypedExpression(add_op.result, lhs.value.typ)
 
@@ -474,7 +503,7 @@ class ListRange(BinaryOp):
                 list_type.xdsl(),
             )
         )
-        list_range.result.name_hint = "int_list"
+        list_range.result.name_hint = "_int_list"
         return TypedExpression(list_range.result, list_type)
 
 
@@ -509,9 +538,8 @@ class Comparator(BinaryOp):
         cmpi_op = builder.insert_op(
             arith.CmpiOp(lhs.value.value, rhs.value.value, self.arith_code)
         )
-        cmpi_op.result.name_hint = (
-            f"{lhs.value.value.name_hint}_"
-            f"{self.arith_code}_{rhs.value.value.name_hint}"
+        cmpi_op.result.name_hint = compose_name_hints(
+            lhs.value.value, self.arith_code, rhs.value.value
         )
         return TypedExpression(cmpi_op.result, ListLangBool())
 
@@ -543,8 +571,8 @@ class BoolAnd(BinaryOp):
         and_op = builder.insert_op(
             arith.AndIOp(lhs.value.value, rhs.value.value)
         )
-        and_op.result.name_hint = (
-            f"{lhs.value.value.name_hint}_and_{rhs.value.value.name_hint}"
+        and_op.result.name_hint = compose_name_hints(
+            lhs.value.value, "and", rhs.value.value
         )
         return TypedExpression(and_op.result, lhs.value.typ)
 
@@ -574,8 +602,8 @@ class BoolOr(BinaryOp):
             )
 
         or_op = builder.insert_op(arith.OrIOp(lhs.value.value, rhs.value.value))
-        or_op.result.name_hint = (
-            f"{lhs.value.value.name_hint}_or_{rhs.value.value.name_hint}"
+        or_op.result.name_hint = compose_name_hints(
+            lhs.value.value, "or", rhs.value.value
         )
         return TypedExpression(or_op.result, lhs.value.typ)
 
