@@ -288,6 +288,7 @@ def _parse_opt_expr_atom(
         true = builder.insert_op(
             arith.ConstantOp(builtin.IntegerAttr(1, ListLangBool().xdsl()))
         )
+        true.result.name_hint = "_true"
         negated = builder.insert_op(
             arith.XOrIOp(to_negate.value.value, true.result)
         )
