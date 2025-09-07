@@ -813,6 +813,8 @@ if __name__ == "__main__":
     from xdsl.context import Context
     from xdsl.transforms import printf_to_llvm
 
+    import transforms
+
     arg_parser = argparse.ArgumentParser(
         prog="list-lang",
         description="Parses list-lang programs and transforms them.",
@@ -830,6 +832,8 @@ if __name__ == "__main__":
         "--to", choices=["tensor", "interp", "mlir"], help="conversion target"
     )
 
+    arg_parser.add_argument("--opt", action=argparse.BooleanOptionalAction)
+
     args = arg_parser.parse_args()
 
     code = args.filename.read()
@@ -841,10 +845,15 @@ if __name__ == "__main__":
 
     module.verify()
 
+    ctx = Context()
+
+    if args.opt:
+        transforms.OptimizeListOps().apply(ctx, module)
+        module.verify()
+
     def lower_down_to(target: str | None):
         if target is None:
             return
-        ctx = Context()
         lowerings.LowerListToTensor().apply(ctx, module)
         module.verify()
         if target == "tensor":
