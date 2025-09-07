@@ -57,6 +57,7 @@ LT_CMP = Punctuation(re.compile(r"<"), "less than comparator")
 GT_CMP = Punctuation(re.compile(r">"), "greater than comparator")
 LTE_CMP = Punctuation(re.compile(r"<="), "less than or equal comparator")
 GTE_CMP = Punctuation(re.compile(r">="), "greater than or equal comparator")
+NEQ_CMP = Punctuation(re.compile(r"!="), "not equal comparator")
 
 BOOL_AND = Punctuation(re.compile(r"&&"), "boolean and")
 BOOL_OR = Punctuation(re.compile(r"\|\|"), "boolean or")
@@ -619,6 +620,7 @@ PARSE_BINOP_PRIORITY: tuple[tuple[BinaryOp, ...], ...] = (
         Comparator(GTE_CMP, "uge"),
         Comparator(GT_CMP, "ugt"),
         Comparator(LT_CMP, "ult"),
+        Comparator(NEQ_CMP, "ne"),
     ),
     (
         BoolAnd(),
