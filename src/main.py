@@ -832,7 +832,13 @@ if __name__ == "__main__":
 
     args = arg_parser.parse_args()
 
-    module = program_to_mlir_module(args.filename.read())
+    code = args.filename.read()
+    try:
+        module = program_to_mlir_module(code)
+    except ParseError as e:
+        line, col = e.line_column(code)
+        raise ValueError(f"Parse error (line {line}, column {col}): {e.msg}")
+
     module.verify()
 
     def lower_down_to(target: str | None):

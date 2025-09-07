@@ -32,4 +32,7 @@ jobs:
         uses: pre-commit/action@v3.0.1
 
       - name: Run lit tests
-        run: uv run --python ${{ matrix.version }} lit -v tests
+        run: uv run --python ${{ matrix.version }} lit -v tests/filecheck
+
+      - name: Run pytest
+        run: uv run --python ${{ matrix.version }} pytest tests/
